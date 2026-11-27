@@ -60,6 +60,9 @@ button:disabled {
 
 .app {
   display: grid;
+  /* A single 1fr column that may shrink: otherwise the topbar's min-content
+     width widens the whole grid past the viewport on narrow panes. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 56px minmax(0, 1fr) 30px;
   height: 100%;
   overflow: hidden;
@@ -175,7 +178,13 @@ button:disabled {
 .topbar-actions {
   display: flex;
   align-items: center;
+  flex: none;
   gap: 6px;
+}
+
+/* Only the narrow layout turns the sidebar into a drawer. */
+.icon-btn.sidebar-toggle {
+  display: none;
 }
 
 .segmented {
@@ -707,6 +716,7 @@ button:disabled {
   min-height: 0;
   overflow: hidden;
   background: var(--canvas);
+  container-type: inline-size;
 }
 
 .stage-area::after {
@@ -723,6 +733,14 @@ button:disabled {
   overflow: hidden;
   cursor: grab;
   touch-action: none;
+}
+
+.canvas-wrap.is-panning {
+  cursor: grabbing;
+}
+
+.canvas-wrap.is-panning .block {
+  cursor: grabbing;
 }
 
 .grid-bg {
@@ -779,6 +797,11 @@ button:disabled {
   box-shadow: var(--shadow-lg);
 }
 
+/* Live splitter resizing must not lag behind the pointer. */
+.stage.is-resizing .block {
+  transition: none;
+}
+
 .block.is-target {
   box-shadow: inset 0 0 0 2px rgba(124, 140, 196, 0.55);
 }
@@ -795,6 +818,7 @@ button:disabled {
 .chip-center {
   position: absolute;
   inset: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -994,44 +1018,50 @@ button:disabled {
   position: absolute;
   z-index: 900;
   touch-action: none;
+  /* Hidden by default: revealed only while the pointer is inside the container. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
 }
 
-.splitter::after {
+.splitter.is-visible,
+.splitter.is-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.splitter::before {
+  /* Short grip: enough to grab, small enough not to disturb the drawing. */
   content: '';
   position: absolute;
-  border-radius: 2px;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 4px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
   background: var(--ink-3);
-  opacity: 0.28;
+  box-shadow: 0 0 0 2px rgba(252, 248, 242, 0.75);
+  opacity: 0.7;
   transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.splitter.is-x::before {
+  width: 4px;
+  height: 20px;
 }
 
 .splitter.is-y {
   cursor: ns-resize;
 }
 
-.splitter.is-y::after {
-  left: 10%;
-  right: 10%;
-  top: 50%;
-  height: 2px;
-  margin-top: -1px;
-}
-
 .splitter.is-x {
   cursor: ew-resize;
 }
 
-.splitter.is-x::after {
-  top: 10%;
-  bottom: 10%;
-  left: 50%;
-  width: 2px;
-  margin-left: -1px;
-}
-
-.splitter:hover::after,
-.splitter.is-active::after,
-.splitter:focus-visible::after {
+.splitter:hover::before,
+.splitter.is-active::before,
+.splitter:focus-visible::before {
   opacity: 1;
   background: var(--accent);
 }
@@ -1111,16 +1141,107 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+/* ------------------------------------------------ root frame (size control) */
+
+.root-frame {
+  position: absolute;
+  z-index: 950;
+  border: 1px dashed rgba(109, 124, 184, 0.5);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.root-frame.is-active {
+  border-color: rgba(109, 124, 184, 0.55);
+}
+
+.root-handle {
+  position: absolute;
+  width: 34px;
+  height: 14px;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.root-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 26px;
+  height: 4px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(252, 248, 242, 0.8);
+  opacity: 0.65;
+  transition: opacity 0.12s;
+}
+
+.root-handle:hover::before {
+  opacity: 1;
+}
+
+.root-handle.is-n {
+  top: -7.5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.root-handle.is-s {
+  bottom: -7.5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.root-handle.is-e,
+.root-handle.is-w {
+  width: 14px;
+  height: 34px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.root-handle.is-e {
+  right: -7.5px;
+}
+
+.root-handle.is-w {
+  left: -7.5px;
+}
+
+.root-handle.is-e::before,
+.root-handle.is-w::before {
+  width: 4px;
+  height: 26px;
+}
+
+.root-size-badge {
+  position: absolute;
+  right: 0;
+  bottom: -24px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(46, 41, 55, 0.9);
+  color: #fbf7f1;
+  font-size: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* ----------------------------------------------------------------- empty */
 
 .empty {
   position: absolute;
   inset: 0;
   overflow-y: auto;
-  padding: 48px clamp(24px, 5vw, 64px);
+  padding: 40px clamp(20px, 4vw, 56px) 56px;
   display: grid;
-  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
-  gap: clamp(24px, 4vw, 56px);
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: clamp(20px, 3vw, 44px);
   align-content: start;
   background: linear-gradient(160deg, #f7f2e9, #ece4d7 55%, #e8e0d2);
 }
@@ -1183,10 +1304,23 @@ button:disabled {
   opacity: 0.55;
 }
 
+/* The canvas is resizable (IDE panes, split views): lay the hero out by the
+   space it actually has, not by the window width. */
+@container (max-width: 700px) {
+  .empty {
+    grid-template-columns: 1fr;
+    padding: 24px 20px 48px;
+  }
+
+  .empty-hero {
+    position: static;
+  }
+}
+
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(186px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 10px;
   align-content: start;
 }
 
@@ -1194,8 +1328,8 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
-  padding: 10px 10px 12px;
+  gap: 3px;
+  padding: 8px 8px 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--paper-2);
@@ -1211,7 +1345,8 @@ button:disabled {
 
 .thumb {
   width: 100%;
-  height: auto;
+  /* Cap the sketch: without it a narrow single-column card grows ~270px tall. */
+  height: 76px;
   padding: 6px;
   border-radius: 9px;
   background: linear-gradient(150deg, #fffdf9, #f4ece0);
@@ -1287,6 +1422,13 @@ button:disabled {
   width: 32px;
   height: 18px;
   accent-color: var(--accent);
+}
+
+.field-note {
+  margin: -2px 0 9px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--ink-3);
 }
 
 .swatches {
@@ -1433,6 +1575,22 @@ button:disabled {
   box-shadow: 0 1px 3px rgba(36, 31, 47, 0.14);
 }
 
+.link-btn.is-neutral:hover {
+  color: var(--ink);
+}
+
+.link-style {
+  width: auto;
+  padding: 0 6px;
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.link-style[aria-pressed='true'] {
+  color: var(--accent-ink);
+  background: rgba(109, 124, 184, 0.14);
+}
+
 .action-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1479,6 +1637,18 @@ button:disabled {
 
 .status-issues {
   color: #b0713f;
+}
+
+.status-mid {
+  flex: 1;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.status-depth {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .issues-pop {
@@ -1534,6 +1704,24 @@ button:disabled {
   font-style: normal;
   color: var(--ink-3);
   font-size: 9px;
+}
+
+.issues-pop .issue-jump {
+  max-width: 150px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 10.5px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issues-pop .issue-jump:hover {
+  color: var(--accent-ink);
+  text-decoration: underline;
 }
 
 /* ------------------------------------------------------------- text view */
@@ -1622,6 +1810,35 @@ button:disabled {
 .code-lines li::marker {
   color: var(--ink-3);
   font-size: 9px;
+}
+
+.code-editor {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding: 14px 18px 40px;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: #fbf7f1;
+  color: #494253;
+  font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.75;
+  tab-size: 2;
+}
+
+.code-editor.is-invalid {
+  box-shadow: inset 3px 0 0 rgba(176, 95, 104, 0.55);
+}
+
+.edit-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--ink-3);
 }
 
 /* --------------------------------------------------------------- dialog */
@@ -1861,6 +2078,7 @@ button:disabled {
 }
 
 .project-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1915,6 +2133,41 @@ button:disabled {
   align-items: center;
   gap: 2px;
   flex: none;
+}
+
+/* One three-dot affordance per row: it opens the same menu as right-click.
+   Space is reserved so revealing it on hover never shifts the row. */
+.project-menu-btn {
+  /* Floating affordance: absolutely positioned so it never reserves row space. */
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: var(--paper-2);
+  box-shadow: 0 1px 4px rgba(46, 41, 55, 0.16);
+  color: var(--ink-3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+
+.project-row:hover .project-menu-btn,
+.project-row:focus-within .project-menu-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.project-menu-btn:hover {
+  background: #fff;
+  color: var(--ink);
 }
 
 .project-name-input {
@@ -2087,6 +2340,50 @@ kbd {
   display: none;
 }
 
+/* ------------------------------------------------------------- write lock */
+
+.write-lock {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  background: linear-gradient(160deg, #f7f2e9, #ece4d7 55%, #e8e0d2);
+}
+
+.write-lock-card {
+  max-width: 360px;
+  text-align: center;
+}
+
+.write-lock-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin: 0 auto 14px;
+  border-radius: 12px;
+  background: linear-gradient(140deg, #d8a7a0, #a9b5dd 55%, #a8cfb4);
+  color: #fff;
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.write-lock-card h1 {
+  margin: 0 0 8px;
+  font-family: var(--serif);
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.write-lock-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
 /* ------------------------------------------------------------ responsive */
 
 @media (max-width: 1240px) {
@@ -2151,8 +2448,32 @@ kbd {
 }
 
 @media (max-width: 860px) {
+  /* The canvas gets the full width; panels become drawers over it. */
   .workspace {
-    grid-template-columns: 208px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 56px;
+    bottom: 30px;
+    left: 0;
+    width: min(300px, 86vw);
+    z-index: 45;
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-102%);
+    visibility: hidden;
+    transition: transform 0.2s ease, visibility 0s linear 0.2s;
+  }
+
+  .app.sidebar-open .sidebar {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.2s ease, visibility 0s;
+  }
+
+  .icon-btn.sidebar-toggle {
+    display: inline-grid;
   }
 
   .topbar {
@@ -2160,14 +2481,13 @@ kbd {
     padding: 0 10px;
   }
 
-  .template-select,
-  .lang {
+  .template-select {
     display: none;
   }
 
   .empty {
     grid-template-columns: 1fr;
-    padding: 24px;
+    padding: 24px 20px 48px;
   }
 
   .empty-hero {
@@ -2180,19 +2500,48 @@ kbd {
 }
 
 @media (max-width: 620px) {
-  .workspace {
-    grid-template-columns: 184px minmax(0, 1fr);
-  }
-
   .tiles {
     grid-template-columns: 1fr;
   }
 
   .doc-title {
-    max-width: 130px;
+    flex: 1;
+    min-width: 0;
+    max-width: 150px;
   }
 
-  .segmented.small {
+  /* Keep the view switch; the shortcut panel is still reachable with "?". */
+  .topbar .shortcuts-btn {
     display: none;
+  }
+
+  .status-depth {
+    display: none;
+  }
+
+  .text-view-head {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 520px) {
+  .status-mid {
+    display: none;
+  }
+}
+
+/* At phone widths the title needs the room more than three extra buttons. */
+@media (max-width: 480px) {
+  .topbar .history-btn,
+  .topbar .lang {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .app.sidebar-open .sidebar {
+    transition: none;
   }
 }

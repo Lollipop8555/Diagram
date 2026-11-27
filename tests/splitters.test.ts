@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { BlockNode, ID } from '../src/model/types';
-import type { LayoutResult } from '../src/layout/dispatch';
-import { buildSplitters } from '../src/canvas/splitters';
+import type { BlockNode, DiagramDoc, ID } from '../src/model/types';
+import { layoutDoc, type LayoutResult } from '../src/layout/dispatch';
+import { buildAllSplitters, buildSplitters } from '../src/canvas/splitters';
 
 function node(id: string, weight: number | undefined, kind: 'linear' | 'grid' = 'linear'): BlockNode {
   return {
@@ -49,12 +49,14 @@ describe('buildSplitters', () => {
       bId: 'b',
       x: 0,
       w: 200,
-      h: 12,
+      h: 16,
       aWeight: 1,
       bWeight: 2,
       span: 312,
+      // (100 + 200) px of content / 3 shares; the 12px gap is excluded.
+      unit: 100,
     });
-    expect(splitters[0].y).toBe(100);
+    expect(splitters[0].y).toBe(98);
   });
 
   it('places a vertical handle for side-by-side blocks', () => {
@@ -64,17 +66,19 @@ describe('buildSplitters', () => {
       b: { x: 112, y: 0, w: 200, h: 50 },
     });
     const [splitter] = buildSplitters(p, layout);
-    expect(splitter).toMatchObject({ axis: 'x', x: 100, w: 12, y: 0, h: 50, span: 312 });
+    expect(splitter).toMatchObject({ axis: 'x', x: 98, w: 16, y: 0, h: 50, span: 312 });
   });
 
-  it('skips content-sized children and missing rects', () => {
+  it('treats unset weights as one share and skips missing rects', () => {
     const p = parent([node('a', 0), node('b', 1), node('c', 1)]);
     const layout = layoutOf({
       a: { x: 0, y: 0, w: 200, h: 100 },
       b: { x: 0, y: 112, w: 200, h: 40 },
       // c intentionally missing
     });
-    expect(buildSplitters(p, layout)).toEqual([]);
+    const splitters = buildSplitters(p, layout);
+    expect(splitters).toHaveLength(1);
+    expect(splitters[0]).toMatchObject({ aId: 'a', bId: 'b', aWeight: 1, bWeight: 1 });
   });
 
   it('skips degenerate geometry (overlapping or tiny rects)', () => {
@@ -100,5 +104,54 @@ describe('buildSplitters', () => {
     expect(buildSplitters(parent([node('a', 1)]), layout)).toEqual([]);
     expect(buildSplitters(null, layout)).toEqual([]);
     expect(buildSplitters(parent([node('a', 1), node('b', 1)]), null)).toEqual([]);
+  });
+});
+
+describe('buildAllSplitters', () => {
+  it('covers every linear container without needing a selection or weights', () => {
+    const leaves = (prefix: string) =>
+      ['a', 'b'].map((suffix) => ({
+        id: `${prefix}${suffix}`,
+        title: suffix,
+        layout: { kind: 'leaf' as const },
+        skin: { kind: 'chip' as const, tone: 'mint' as const },
+        children: [],
+      }));
+    const doc: DiagramDoc = {
+      version: 3,
+      meta: {
+        title: 'nested',
+        template: 'custom',
+        direction: 'top-down',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      size: { w: 600, h: 400 },
+      root: {
+        id: 'root',
+        title: '',
+        layout: { kind: 'linear', axis: 'y', gap: 12 },
+        skin: { kind: 'plain', tone: 'paper' },
+        children: [
+          {
+            id: 'band1',
+            title: 'band1',
+            layout: { kind: 'linear', axis: 'x', gap: 12 },
+            skin: { kind: 'plain', tone: 'paper' },
+            children: leaves('b1'),
+          },
+          {
+            id: 'band2',
+            title: 'band2',
+            layout: { kind: 'linear', axis: 'x', gap: 12 },
+            skin: { kind: 'plain', tone: 'paper' },
+            children: leaves('b2'),
+          },
+        ],
+      },
+      relations: [],
+    };
+    // root pair + one pair inside each band.
+    expect(buildAllSplitters(layoutDoc(doc))).toHaveLength(3);
   });
 });

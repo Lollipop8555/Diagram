@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, CircleHelp, Download, PanelRight, Redo2, Undo2 } from 'lucide-react';
+import {
+  ChevronDown,
+  CircleHelp,
+  Download,
+  PanelLeft,
+  PanelRight,
+  Redo2,
+  Undo2,
+} from 'lucide-react';
 import type { Editor } from '../model/store';
 import { downloadBlob, downloadText, slugify } from '../interchange/download';
 import { toPop } from '../interchange/toPop';
@@ -12,12 +20,16 @@ import { layoutDoc } from '../layout/dispatch';
 export function TopBar({
   editor,
   inspectorOpen,
+  sidebarOpen,
   onToggleInspector,
+  onToggleSidebar,
   onOpenShortcuts,
 }: {
   editor: Editor;
   inspectorOpen: boolean;
+  sidebarOpen: boolean;
   onToggleInspector: () => void;
+  onToggleSidebar: () => void;
   onOpenShortcuts: () => void;
 }) {
   const { doc, locale, view, t } = editor;
@@ -102,7 +114,7 @@ export function TopBar({
       <div className="topbar-actions">
         <button
           type="button"
-          className="icon-btn"
+          className="icon-btn history-btn"
           onClick={editor.undo}
           disabled={!editor.canUndo}
           title={t('undo')}
@@ -112,7 +124,7 @@ export function TopBar({
         </button>
         <button
           type="button"
-          className="icon-btn"
+          className="icon-btn history-btn"
           onClick={editor.redo}
           disabled={!editor.canRedo}
           title={t('redo')}
@@ -144,7 +156,14 @@ export function TopBar({
         </button>
 
         <details className="menu" ref={menuRef} onToggle={() => setMenuOpen(menuRef.current?.open ?? false)}>
-          <summary className={`btn primary${doc ? '' : ' is-disabled'}`} aria-disabled={!doc}>
+          <summary
+            className={`btn primary${doc ? '' : ' is-disabled'}`}
+            aria-disabled={!doc}
+            onClick={(event) => {
+              // A <summary> cannot be disabled; keep the empty state from opening it.
+              if (!doc) event.preventDefault();
+            }}
+          >
             <Download size={14} strokeWidth={1.8} />
             {t('export')}
             <ChevronDown size={12} strokeWidth={2} />
@@ -171,12 +190,24 @@ export function TopBar({
 
         <button
           type="button"
-          className="icon-btn"
+          className="icon-btn shortcuts-btn"
           onClick={onOpenShortcuts}
           title={t('shortcuts')}
           aria-label={t('shortcuts')}
         >
           <CircleHelp size={17} strokeWidth={1.8} />
+        </button>
+
+        <button
+          type="button"
+          className="icon-btn sidebar-toggle"
+          onClick={onToggleSidebar}
+          title={t('panels')}
+          aria-label={t('panels')}
+          aria-controls="sidebar"
+          aria-expanded={sidebarOpen}
+        >
+          <PanelLeft size={17} strokeWidth={1.8} />
         </button>
 
         <button

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TEMPLATE_IDS, type BlockNode, type DiagramDoc, type Locale, type Rect } from '../src/model/types';
 import { getTemplate } from '../src/model/templates';
+import { pairWeights } from '../src/model/tree';
 import { layoutDoc } from '../src/layout/dispatch';
 
 function overlap(a: Rect, b: Rect): boolean {
@@ -99,6 +100,90 @@ describe('linear weights', () => {
     const widths = [0, 1, 2].map((i) => layout.byId[`w${i}`].rect.w);
     expect(new Set(widths.map((w) => Math.round(w))).size).toBe(1);
     expect(widths[0]).toBeGreaterThan(80);
+  });
+});
+
+describe('weight semantics', () => {
+  function unevenDoc(weights: number[], kind: 'linear' | 'grid'): DiagramDoc {
+    return {
+      version: 3,
+      meta: {
+        title: 'weights',
+        template: 'custom',
+        direction: 'top-down',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      root: {
+        id: 'root',
+        title: '',
+        layout:
+          kind === 'linear'
+            ? { kind: 'linear', axis: 'y', gap: 0 }
+            : { kind: 'grid', columns: 1, gap: 0 },
+        skin: { kind: 'plain', tone: 'paper' },
+        // The middle leaf has a subtitle, so it is naturally taller.
+        children: weights.map((weight, i) => ({
+          id: `w${i}`,
+          title: `块 ${i}`,
+          subtitle: i === 1 ? '较长的说明文字' : undefined,
+          layout: { kind: 'leaf' as const, weight },
+          skin: { kind: 'chip' as const, tone: 'mint' as const },
+          children: [],
+        })),
+      },
+      relations: [],
+    };
+  }
+
+  function sizes(d: DiagramDoc) {
+    const layout = layoutDoc(d);
+    return {
+      list: d.root.children.map((child) => layout.byId[child.id].rect.h),
+      total: layout.bounds.h,
+    };
+  }
+
+  it('linear: a heavier child grows and its siblings keep their size', () => {
+    const base = sizes(unevenDoc([1, 1, 1], 'linear'));
+    const grown = sizes(unevenDoc([1, 2, 1], 'linear'));
+    // Equal weights still line up at the biggest natural size.
+    expect(base.list[0]).toBeCloseTo(base.list[1], 5);
+    // The siblings are untouched; only the weighted one grows, and the diagram follows.
+    expect(grown.list[0]).toBeCloseTo(base.list[0], 5);
+    expect(grown.list[2]).toBeCloseTo(base.list[2], 5);
+    expect(grown.list[1]).toBeCloseTo(base.list[1] * 2, 5);
+    expect(grown.total).toBeGreaterThan(base.total);
+  });
+
+  it('linear: one extra share adds exactly one base size', () => {
+    const base = sizes(unevenDoc([1, 1, 1], 'linear'));
+    const one = sizes(unevenDoc([1, 2, 1], 'linear'));
+    const two = sizes(unevenDoc([2, 4, 2], 'linear'));
+    expect(one.list[1] - base.list[1]).toBeCloseTo(base.list[0], 5);
+    // The share is a fixed unit, so doubling every weight doubles every block.
+    one.list.forEach((value, i) => expect(two.list[i]).toBeCloseTo(value * 2, 5));
+  });
+
+  it('grid: a heavier row grows and the other row keeps its height', () => {
+    const base = sizes(unevenDoc([1, 1], 'grid'));
+    const grown = sizes(unevenDoc([1, 2], 'grid'));
+    expect(base.list[0]).toBeCloseTo(base.list[1], 5);
+    expect(grown.list[0]).toBeCloseTo(base.list[0], 5);
+    expect(grown.list[1]).toBeCloseTo(base.list[1] * 2, 5);
+  });
+
+  it('a trade keeps the pair total while both sides keep a share', () => {
+    const base = unevenDoc([2, 2], 'linear');
+    const traded = pairWeights(base, 'w0', 'w1', 3, 1);
+    const before = layoutDoc(base);
+    const after = layoutDoc(traded);
+    const sum = (layout: typeof before) =>
+      layout.byId.w0.rect.h + layout.byId.w1.rect.h;
+    expect(after.byId.w0.rect.h).toBeGreaterThan(before.byId.w0.rect.h);
+    expect(after.byId.w1.rect.h).toBeLessThan(before.byId.w1.rect.h);
+    // A splitter trade keeps the pair's total size: the boundary moves, no growth.
+    expect(sum(after)).toBeCloseTo(sum(before), 5);
   });
 });
 

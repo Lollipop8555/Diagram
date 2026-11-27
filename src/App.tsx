@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useEditor } from './model/store';
+import { useWriteLock } from './model/writeLock';
+import { translate } from './i18n/dict';
+import type { Locale } from './model/types';
 import { TopBar } from './components/TopBar';
 import { Palette } from './components/Palette';
 import { Inspector } from './components/Inspector';
@@ -11,13 +14,44 @@ import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { Canvas } from './canvas/Canvas';
 import { findParent } from './model/tree';
 
+/** Only one tab owns the shared storage; the others wait until it is free. */
 export default function App() {
+  const lock = useWriteLock();
+  if (lock === 'owner') return <Editor />;
+
+  const locale: Locale = localStorage.getItem('macaron.locale') === 'en' ? 'en' : 'zh';
+  return (
+    <div className="write-lock" role="status" aria-live="polite">
+      <div className="write-lock-card">
+        <span className="write-lock-mark">D</span>
+        <h1>{translate(locale, lock === 'blocked' ? 'writeLockTitle' : 'writeLockPending')}</h1>
+        {lock === 'blocked' ? <p>{translate(locale, 'writeLockBody')}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function Editor() {
   const editor = useEditor();
   const { doc, selectedId, view, t } = editor;
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
+
+  /** Picking a project from the drawer should get out of the way. */
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [editor.activeProjectId]);
+  const toggleInspector = useCallback(() => {
+    setSidebarOpen(false);
+    setInspectorOpen((open) => !open);
+  }, []);
+  const toggleSidebar = useCallback(() => {
+    setInspectorOpen(false);
+    setSidebarOpen((open) => !open);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -101,6 +135,10 @@ export default function App() {
         return;
       }
       if (event.key === 'Escape') {
+        if (sidebarOpen) {
+          setSidebarOpen(false);
+          return;
+        }
         if (inspectorOpen) {
           setInspectorOpen(false);
           return;
@@ -119,14 +157,20 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [doc, editor, inspectorOpen, selectedId, shortcutsOpen, t, view]);
+  }, [doc, editor, inspectorOpen, selectedId, shortcutsOpen, sidebarOpen, t, view]);
 
   return (
-    <div className={`app${inspectorOpen ? ' inspector-open' : ''}`}>
+    <div
+      className={`app${inspectorOpen ? ' inspector-open' : ''}${
+        sidebarOpen ? ' sidebar-open' : ''
+      }`}
+    >
       <TopBar
         editor={editor}
         inspectorOpen={inspectorOpen}
-        onToggleInspector={() => setInspectorOpen((open) => !open)}
+        sidebarOpen={sidebarOpen}
+        onToggleInspector={toggleInspector}
+        onToggleSidebar={toggleSidebar}
         onOpenShortcuts={() => setShortcutsOpen(true)}
       />
 
@@ -144,12 +188,15 @@ export default function App() {
         <Inspector editor={editor} />
       </div>
 
-      {inspectorOpen ? (
+      {inspectorOpen || sidebarOpen ? (
         <button
           type="button"
           className="drawer-scrim"
-          aria-label={t('closeInspector')}
-          onClick={() => setInspectorOpen(false)}
+          aria-label={inspectorOpen ? t('closeInspector') : t('projects')}
+          onClick={() => {
+            setInspectorOpen(false);
+            setSidebarOpen(false);
+          }}
         />
       ) : null}
 

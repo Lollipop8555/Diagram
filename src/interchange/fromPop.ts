@@ -202,6 +202,7 @@ export function parsePop(text: string): DiagramDoc {
   let direction: 'bottom-up' | 'top-down' = 'bottom-up';
   let createdAt = new Date().toISOString();
   let description: string | undefined;
+  let size: { w: number; h: number } | undefined;
   let sawHeader = false;
   let relSeq = 0;
 
@@ -238,6 +239,11 @@ export function parsePop(text: string): DiagramDoc {
         case 'desc':
           description = unquote(rest);
           break;
+        case 'size': {
+          const [w, h] = rest.split(/\s+/).map(Number);
+          if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) size = { w, h };
+          break;
+        }
         default:
           break;
       }
@@ -380,6 +386,7 @@ export function parsePop(text: string): DiagramDoc {
       createdAt,
       updatedAt: new Date().toISOString(),
     },
+    ...(size ? { size } : {}),
     root,
     relations,
   };

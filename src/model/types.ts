@@ -121,6 +121,12 @@ export interface DocMeta {
 export interface DiagramDoc {
   version: 3;
   meta: DocMeta;
+  /**
+   * Explicit size of the root frame. The layout fills this box and divides it
+   * among children by weight, so the root is the single control over the
+   * diagram's overall size. Absent = size derived from content (legacy docs).
+   */
+  size?: Size;
   root: BlockNode;
   relations: Relation[];
 }

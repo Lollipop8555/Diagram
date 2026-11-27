@@ -1,5 +1,13 @@
 import type { DictKey } from './dict';
 import type { LayoutKind, RelationKind, SkinKind, Tone } from '../model/types';
+import type { IssueCode } from '../model/validate';
+
+export const ISSUE_LABELS: Record<IssueCode, DictKey> = {
+  DEPTH: 'issueDepth',
+  TEMPLATE_LAYOUT: 'issueTemplateLayout',
+  CHILDREN: 'issueChildren',
+  INCOMPATIBLE: 'issueIncompatible',
+};
 
 export const SKIN_LABELS: Record<SkinKind, DictKey> = {
   band: 'skinBand',

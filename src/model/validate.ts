@@ -1,5 +1,5 @@
 import type { BlockNode, DiagramDoc, ID, LayoutKind, SkinKind, TemplateId } from './types';
-import { MAX_CHILDREN, MAX_DEPTH, acceptsChild } from '../layout/registry';
+import { MAX_CHILDREN, acceptsChild } from '../layout/registry';
 import { getTemplate, templateAllowsLayout } from './templates';
 
 export type IssueCode = 'TEMPLATE_LAYOUT' | 'INCOMPATIBLE' | 'DEPTH' | 'CHILDREN';
@@ -13,10 +13,7 @@ export interface Issue {
 export function validateDoc(doc: DiagramDoc): Issue[] {
   const template = getTemplate(doc.meta.template);
   const issues: Issue[] = [];
-  const walk = (block: BlockNode, depth: number) => {
-    if (depth > Math.min(MAX_DEPTH, template.maxDepth)) {
-      issues.push({ blockId: block.id, code: 'DEPTH' });
-    }
+  const walk = (block: BlockNode) => {
     if (!templateAllowsLayout(template, block.layout.kind)) {
       issues.push({ blockId: block.id, code: 'TEMPLATE_LAYOUT', detail: block.layout.kind });
     }
@@ -27,10 +24,10 @@ export function validateDoc(doc: DiagramDoc): Issue[] {
       if (!acceptsChild(block.layout.kind, child.layout.kind)) {
         issues.push({ blockId: child.id, code: 'INCOMPATIBLE', detail: `${block.layout.kind}/${child.layout.kind}` });
       }
-      walk(child, depth + 1);
+      walk(child);
     }
   };
-  walk(doc.root, 0);
+  walk(doc.root);
   return issues;
 }
 

@@ -75,6 +75,11 @@ export function migrateDoc(raw: any): DiagramDoc {
         }))
     : [];
   const now = new Date().toISOString();
+  const size =
+    raw?.size && Number.isFinite(raw.size.w) && Number.isFinite(raw.size.h) &&
+    raw.size.w > 0 && raw.size.h > 0
+      ? { w: Math.round(raw.size.w), h: Math.round(raw.size.h) }
+      : undefined;
   return {
     version: 3,
     meta: {
@@ -85,6 +90,7 @@ export function migrateDoc(raw: any): DiagramDoc {
       createdAt: raw?.meta?.createdAt ?? now,
       updatedAt: now,
     },
+    ...(size ? { size } : {}),
     root,
     relations,
   };

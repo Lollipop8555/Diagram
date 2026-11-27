@@ -11,10 +11,13 @@ interface Props {
   dragging: boolean;
   /** Screen-reader description, e.g. "容器：支付系统". */
   label: string;
+  /** The root draws its own frame, so it does not need the generic ring. */
+  showRing?: boolean;
   onPointerDown: (event: React.PointerEvent, id: string) => void;
   onDoubleClick: (id: string) => void;
   onSelect: (id: string) => void;
   onToggleCollapse: (id: string) => void;
+  onContextMenu: (event: React.MouseEvent, id: string) => void;
 }
 
 function BlockViewInner({
@@ -23,10 +26,12 @@ function BlockViewInner({
   isTarget,
   dragging,
   label,
+  showRing = true,
   onPointerDown,
   onDoubleClick,
   onSelect,
   onToggleCollapse,
+  onContextMenu,
 }: Props) {
   const { block, rect } = entry;
   const def = skinDefOf(block.skin);
@@ -87,6 +92,11 @@ function BlockViewInner({
         zIndex: dragging ? 940 : entry.depth * 100 + (selected ? 50 : 0),
       }}
       onPointerDown={(event) => onPointerDown(event, block.id)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onContextMenu(event, block.id);
+      }}
       onDoubleClick={(event) => {
         event.stopPropagation();
         onDoubleClick(block.id);
@@ -133,7 +143,7 @@ function BlockViewInner({
       )}
 
       {block.badge && !block.collapsed ? <div className="block-badge">{block.badge}</div> : null}
-      {selected ? <div className="selection-ring" /> : null}
+      {selected && showRing ? <div className="selection-ring" /> : null}
     </div>
   );
 }

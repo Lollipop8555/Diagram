@@ -177,7 +177,7 @@ export function Palette({ editor }: { editor: Editor }) {
   ];
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" id="sidebar">
       <nav className="sidebar-rail" aria-label={t('projects')}>
         {tabs.map((item) => (
           <button

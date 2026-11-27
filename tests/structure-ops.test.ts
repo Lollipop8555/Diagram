@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { BlockNode, DiagramDoc } from '../src/model/types';
 import {
+  checkMove,
   demoteBlock,
   demoteTarget,
   findBlock,
   findParent,
   pairWeights,
+  tradeWeights,
 } from '../src/model/tree';
+import { validateDoc } from '../src/model/validate';
 
 function linear(id: string, children: BlockNode[] = []): BlockNode {
   return {
@@ -82,6 +85,24 @@ describe('demoteBlock', () => {
   });
 });
 
+describe('tradeWeights', () => {
+  it('keeps the pair total while both sides have room', () => {
+    // The boundary follows the pointer one-to-one.
+    expect(tradeWeights(2, 2, 1)).toEqual({ a: 3, b: 1 });
+    expect(tradeWeights(2, 2, -1)).toEqual({ a: 1, b: 3 });
+    expect(tradeWeights(2, 2, 0.5)).toEqual({ a: 2.5, b: 1.5 });
+  });
+
+  it('grows the far side past the floor so the frame can expand', () => {
+    // At weight 1 the compressed side stops shrinking; the other side keeps the
+    // movement and the caller grows the root frame by the same amount.
+    expect(tradeWeights(1, 1, 1)).toEqual({ a: 2, b: 1 });
+    expect(tradeWeights(1, 1, -1)).toEqual({ a: 1, b: 2 });
+    expect(tradeWeights(1, 3, -2)).toEqual({ a: 1, b: 5 });
+    expect(tradeWeights(1, 3, 2)).toEqual({ a: 3, b: 1 });
+  });
+});
+
 describe('pairWeights', () => {
   function weighted(): DiagramDoc {
     const doc = fixture();
@@ -119,5 +140,31 @@ describe('pairWeights', () => {
   it('returns the same document when nothing changes', () => {
     const doc = weighted();
     expect(pairWeights(doc, 'a', 'b', 1)).toBe(doc);
+  });
+});
+
+describe('nesting depth', () => {
+  it('no longer caps how deep a block may be moved', () => {
+    let chain = linear('n0');
+    const top = chain;
+    for (let i = 1; i < 14; i += 1) {
+      const next = linear(`n${i}`);
+      chain.children.push(next);
+      chain = next;
+    }
+    const doc: DiagramDoc = {
+      ...fixture(),
+      root: { ...top, children: [...top.children, leaf('mover')] },
+    };
+    // Dropping the extra leaf into the 14th level must be allowed.
+    expect(checkMove(doc, 'mover', { parentId: 'n13', index: 0 })).toBeNull();
+    const deepDoc = {
+      ...doc,
+      root: {
+        ...top,
+        children: top.children.filter((child) => child.id !== 'mover'),
+      },
+    };
+    expect(validateDoc(deepDoc).some((issue) => issue.code === 'DEPTH')).toBe(false);
   });
 });

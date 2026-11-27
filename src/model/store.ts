@@ -8,6 +8,7 @@ import type {
   Locale,
   Relation,
   RelationKind,
+  Size,
   SkinKind,
   SkinProps,
   TemplateId,
@@ -40,6 +41,8 @@ import {
   type History,
 } from './history';
 import { acceptsChild } from '../layout/registry';
+import { layoutDoc, MIN_ROOT_H, MIN_ROOT_W } from '../layout/dispatch';
+import { planRootGrowth, weightUnitOf, withDefaultSize } from '../layout/root';
 import { applyTemplate, validateDoc, type TemplateChange, type Issue } from './validate';
 import { SKINS } from '../skins/palette';
 import { stepZoom } from './zoom';
@@ -113,6 +116,10 @@ export interface Editor {
   view: 'canvas' | 'text';
   zoom: number;
   pan: { x: number; y: number };
+  /** True while the canvas should re-fit whenever its viewport resizes. */
+  fitMode: boolean;
+  /** Apply a fitted view without leaving fit mode (used by the canvas). */
+  applyFit: (zoom: number, pan: { x: number; y: number }) => void;
   toasts: Toast[];
   /** Non-null while an in-app confirmation dialog is open. */
   confirm: ConfirmRequest | null;
@@ -150,17 +157,22 @@ export interface Editor {
   moveBlockTo: (id: ID, parentId: ID, index: number) => boolean;
   promote: (id: ID) => void;
   demote: (id: ID) => void;
-  /** Trade weight between two adjacent siblings, keeping their sum constant. */
-  setPairWeight: (aId: ID, bId: ID, aWeight: number) => void;
+  /** Set the weights of two adjacent siblings, keeping both at 1 or above. */
+  setPairWeight: (aId: ID, bId: ID, aWeight: number, bWeight?: number, size?: Size) => void;
+  /** Resize the root frame (the single control over the diagram's overall size). */
+  setDocSize: (size: Size) => void;
   collapseAll: (collapsed: boolean) => void;
   switchTemplate: (id: TemplateId) => TemplateChange[];
   addRelation: (from: ID, to: ID, kind?: RelationKind, label?: string) => void;
   patchRelation: (id: ID, patch: Partial<Relation>) => void;
   removeRelation: (id: ID) => void;
   importText: (text: string, filename: string) => Promise<boolean>;
+  /** Apply pop_diagram source text to the open document (source view). */
+  applySource: (text: string) => Promise<boolean>;
   newProject: (template: TemplateId) => void;
   openProject: (id: string) => void;
   renameProject: (id: string, name: string) => void;
+  duplicateProject: (id: string) => void;
   /** Move a project to the trash (recoverable). */
   deleteProject: (id: string) => void;
   restoreProject: (id: string) => void;
@@ -211,7 +223,8 @@ export function useEditor(): Editor {
     const current = initial.current!.library.projects.find(
       (p) => p.id === initial.current!.activeId,
     );
-    return emptyHistory(current ? current.doc : loadDoc());
+    const base = current ? current.doc : loadDoc();
+    return emptyHistory(base ? withDefaultSize(base) : null);
   });
   const doc = history.present;
 
@@ -221,8 +234,10 @@ export function useEditor(): Editor {
   });
   const [selectedId, setSelectedId] = useState<ID | null>(null);
   const [view, setView] = useState<'canvas' | 'text'>('canvas');
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [zoom, setZoomState] = useState(1);
+  const [pan, setPanState] = useState({ x: 0, y: 0 });
+  /** Manual navigation leaves fit mode; requestFit / applyFit re-enter it. */
+  const [fitMode, setFitMode] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [fitSignal, setFitSignal] = useState(0);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
@@ -338,8 +353,9 @@ export function useEditor(): Editor {
   }, []);
 
   const resetDoc = useCallback((next: DiagramDoc | null) => {
-    setHistory(emptyHistory(next));
+    setHistory(emptyHistory(next ? withDefaultSize(next) : null));
     setSelectedId(null);
+    setFitMode(true);
     setFitSignal((n) => n + 1);
   }, []);
 
@@ -351,8 +367,36 @@ export function useEditor(): Editor {
     setHistory((h) => redoHistory(h));
   }, []);
 
-  const zoomIn = useCallback(() => setZoom((value) => stepZoom(value, 1)), []);
-  const zoomOut = useCallback(() => setZoom((value) => stepZoom(value, -1)), []);
+  /** Any explicit zoom / pan is user navigation: stop auto-fitting. */
+  const setZoom = useCallback((value: number) => {
+    setFitMode(false);
+    setZoomState(value);
+  }, []);
+
+  const setPan = useCallback((value: { x: number; y: number }) => {
+    setFitMode(false);
+    setPanState(value);
+  }, []);
+
+  const applyFit = useCallback((value: number, nextPan: { x: number; y: number }) => {
+    setFitMode(true);
+    setZoomState(value);
+    setPanState(nextPan);
+  }, []);
+
+  const requestFit = useCallback(() => {
+    setFitMode(true);
+    setFitSignal((n) => n + 1);
+  }, []);
+
+  const zoomIn = useCallback(() => {
+    setFitMode(false);
+    setZoomState((value) => stepZoom(value, 1));
+  }, []);
+  const zoomOut = useCallback(() => {
+    setFitMode(false);
+    setZoomState((value) => stepZoom(value, -1));
+  }, []);
 
   const createFromTemplate = useCallback(
     (id: TemplateId) => {
@@ -390,6 +434,22 @@ export function useEditor(): Editor {
       ),
     }));
   }, []);
+
+  /** Copy a project (deep clone) and open the copy, so the original stays intact. */
+  const duplicateProject = useCallback(
+    (id: string) => {
+      const source = projects.find((project) => project.id === id);
+      if (!source) return;
+      const copy = JSON.parse(JSON.stringify(source.doc)) as DiagramDoc;
+      const project = makeProject(copy, `${source.name} ${t('copySuffix')}`, projects);
+      setLibrary((prev) => ({ ...prev, projects: upsertProject(prev.projects, project) }));
+      setActiveId(project.id);
+      resetDoc(project.doc);
+      setView('canvas');
+      notify(t('projectCreated'));
+    },
+    [notify, projects, resetDoc, t],
+  );
 
   /** Deleting only moves a project to the trash; emptying the trash is final. */
   const deleteProject = useCallback(
@@ -439,9 +499,40 @@ export function useEditor(): Editor {
 
   const patchLayout = useCallback(
     (id: ID, patch: Partial<LayoutProps>) =>
+      commit((d) => {
+        const next = {
+          ...d,
+          root: updateBlock(d.root, id, (b) => ({ ...b, layout: { ...b.layout, ...patch } })),
+        };
+        if (patch.weight === undefined) return next;
+
+        // Growing a block's weight must not squeeze its siblings: grow the root
+        // frame by exactly as much space as the block gained.
+        const block = findBlock(d.root, id);
+        const parent = findParent(d.root, id);
+        if (!block || !parent || parent.layout.kind !== 'linear' || !d.size) return next;
+        const axis: 'x' | 'y' = parent.layout.axis === 'x' ? 'x' : 'y';
+        const before = Math.max(1, block.layout.weight || 1);
+        const after = Math.max(1, patch.weight);
+        if (after <= before) return next;
+        const layout = layoutDoc(d);
+        const unit = weightUnitOf(layout, parent.id, axis);
+        if (!unit) return next;
+        const grown = planRootGrowth(d, layout, parent.id, axis, unit * (after - before));
+        return grown ? { ...next, size: grown } : next;
+      }),
+    [commit],
+  );
+
+  /** Resize the root frame; children re-flow by weight (compression is the point). */
+  const setDocSize = useCallback(
+    (size: Size) =>
       commit((d) => ({
         ...d,
-        root: updateBlock(d.root, id, (b) => ({ ...b, layout: { ...b.layout, ...patch } })),
+        size: {
+          w: Math.max(MIN_ROOT_W, Math.round(size.w)),
+          h: Math.max(MIN_ROOT_H, Math.round(size.h)),
+        },
       })),
     [commit],
   );
@@ -626,7 +717,18 @@ export function useEditor(): Editor {
   const demote = useCallback((id: ID) => commit((d) => demoteBlock(d, id)), [commit]);
 
   const setPairWeight = useCallback(
-    (aId: ID, bId: ID, aWeight: number) => commit((d) => pairWeights(d, aId, bId, aWeight)),
+    (aId: ID, bId: ID, aWeight: number, bWeight?: number, size?: Size) =>
+      commit((d) => {
+        const next = pairWeights(d, aId, bId, aWeight, bWeight);
+        if (!size) return next;
+        return {
+          ...next,
+          size: {
+            w: Math.max(MIN_ROOT_W, Math.round(size.w)),
+            h: Math.max(MIN_ROOT_H, Math.round(size.h)),
+          },
+        };
+      }),
     [commit],
   );
 
@@ -719,6 +821,36 @@ export function useEditor(): Editor {
     [askConfirm, notify, parseIncoming, resetDoc, t],
   );
 
+  /**
+   * Source view → canvas: parse, optionally repair against the template, then
+   * push onto the undo stack (unlike import, this edits the open project).
+   */
+  const applySource = useCallback(
+    async (text: string) => {
+      if (!doc) return false;
+      if (text.length > MAX_FILE) {
+        notify(t('fileTooLarge'), 'error');
+        return false;
+      }
+      const result = tryParsePop(text);
+      if (!result.ok) {
+        notify(`${t('parseError')} · L${result.error.line}: ${result.error.message}`, 'error');
+        return false;
+      }
+      let next = result.doc;
+      if (validateDoc(next).length) {
+        const ok = await askConfirm(t('repairSource'), t('dialogRepair'));
+        if (!ok) return false;
+        next = applyTemplate(next, next.meta.template).doc;
+      }
+      commit(() => withDefaultSize(next));
+      setSelectedId(null);
+      notify(t('applied'));
+      return true;
+    },
+    [askConfirm, commit, doc, notify, t],
+  );
+
   const importProject = useCallback(
     async (text: string, filename: string) => {
       let parsed = parseIncoming(text, filename);
@@ -761,6 +893,8 @@ export function useEditor(): Editor {
     view,
     zoom,
     pan,
+    fitMode,
+    applyFit,
     toasts,
     confirm,
     askConfirm,
@@ -777,7 +911,7 @@ export function useEditor(): Editor {
     zoomIn,
     zoomOut,
     setPan,
-    requestFit: () => setFitSignal((n) => n + 1),
+    requestFit,
     select: setSelectedId,
     notify,
     createFromTemplate,
@@ -796,15 +930,18 @@ export function useEditor(): Editor {
     promote,
     demote,
     setPairWeight,
+    setDocSize,
     collapseAll,
     switchTemplate,
     addRelation,
     patchRelation,
     removeRelation,
     importText,
+    applySource,
     newProject,
     openProject,
     renameProject,
+    duplicateProject,
     deleteProject,
     restoreProject,
     purgeProject,

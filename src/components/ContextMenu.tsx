@@ -85,6 +85,10 @@ export function useContextMenu() {
       event.preventDefault();
       setMenu({ x: event.clientX, y: event.clientY, items });
     },
+    /** Open from a button (three-dot menus) at an explicit point. */
+    openAt: (x: number, y: number, items: ContextMenuItem[]) => {
+      setMenu({ x, y, items });
+    },
     close: () => setMenu(null),
   };
 }

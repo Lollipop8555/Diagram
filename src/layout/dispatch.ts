@@ -57,19 +57,22 @@ function measureBlock(block: BlockNode, depth: number, sizes: Record<ID, Size>):
   return s;
 }
 
+export const MIN_ROOT_W = 240;
+export const MIN_ROOT_H = 160;
+
 export function layoutDoc(doc: DiagramDoc, minWidth = 880): LayoutResult {
   const sizes: Record<ID, Size> = {};
   const rects: Record<ID, Rect> = {};
   const entries: BlockEntry[] = [];
   const byId: Record<ID, BlockEntry> = {};
 
-  const rootSize = measureBlock(doc.root, 0, sizes);
-  const rootRect: Rect = {
-    x: 0,
-    y: 0,
-    w: Math.max(rootSize.w, minWidth),
-    h: rootSize.h,
-  };
+  const measured = measureBlock(doc.root, 0, sizes);
+  // The root frame is authoritative when it has an explicit size; children are
+  // divided by weight inside it (so the whole diagram can be compressed).
+  const explicit = doc.size && doc.size.w > 0 && doc.size.h > 0 ? doc.size : null;
+  const rootRect: Rect = explicit
+    ? { x: 0, y: 0, w: Math.max(MIN_ROOT_W, explicit.w), h: Math.max(MIN_ROOT_H, explicit.h) }
+    : { x: 0, y: 0, w: Math.max(measured.w, minWidth), h: measured.h };
 
   const visit = (block: BlockNode, rect: Rect, depth: number, parentId: ID | null, index: number) => {
     const entry: BlockEntry = { block, rect, depth, parentId, index };
@@ -115,9 +118,11 @@ export function layoutDoc(doc: DiagramDoc, minWidth = 880): LayoutResult {
     maxX = rootRect.w;
     maxY = rootRect.h;
   }
-  const bounds: Rect = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  const bounds: Rect = explicit
+    ? { x: 0, y: 0, w: rootRect.w, h: rootRect.h }
+    : { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 
-  return { rects, entries, byId, rootSize, bounds };
+  return { rects, entries, byId, rootSize: { w: rootRect.w, h: rootRect.h }, bounds };
 }
 
 export function blockAtPoint(result: LayoutResult, x: number, y: number): BlockEntry | null {

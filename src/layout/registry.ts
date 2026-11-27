@@ -24,6 +24,11 @@ export interface LayoutDef {
 
 export const MAX_DEPTH = 8;
 export const MAX_CHILDREN = 40;
+/**
+ * Lower bound for a weight. 1 is one natural share and keeps the block legible;
+ * a splitter that would go below it grows the root frame instead.
+ */
+export const MIN_WEIGHT = 1;
 
 export function paddingOf(block: BlockNode): { x: number; y: number } {
   const def = skinDefOf(block.skin);
@@ -52,30 +57,42 @@ export const weightOf = (block: BlockNode) => Math.max(0, block.layout.weight ??
 /* ------------------------------------------------------------------ linear */
 
 /**
- * Main-axis sizes for a linear container. The axis is always filled: every child
- * is a flex item with `max(1, weight)` (a missing weight behaves like 1, so
- * unweighted rows split evenly), and the sizes stay strictly proportional. The
- * unit is the largest `content / weight` ratio, so proportional sizing never
- * shrinks a child below its text.
+ * Main-axis sizes for a linear container. Every child gets `weight` whole
+ * shares of the main axis, and a missing weight behaves like 1.
+ *
+ * One share is the *largest natural child* on that axis, independent of the
+ * weights. That makes the size model predictable:
+ *  - equal weights line up at the same readable size (the "band" look);
+ *  - raising one weight only adds shares to that child — siblings keep their
+ *    size instead of being squeezed to make room;
+ *  - the base never moves while dragging a splitter, so the boundary follows
+ *    the pointer one-to-one.
  */
 function mainWeights(block: BlockNode): number[] {
-  return block.children.map((child) => Math.max(1, weightOf(child)));
+  return block.children.map((child) => Math.max(MIN_WEIGHT, weightOf(child) || 1));
+}
+
+/** One share on a weighted axis: the biggest natural size on that axis. */
+function weightUnit(sizes: number[]): number {
+  return maxOf(sizes);
 }
 
 function proportionalMain(block: BlockNode, intrinsic: number[]): number[] {
   const weights = mainWeights(block);
-  let unit = 0;
-  weights.forEach((w, i) => {
-    unit = Math.max(unit, intrinsic[i] / w);
-  });
-  return weights.map((w) => unit * w);
+  const unit = weightUnit(intrinsic);
+  return weights.map((weight) => unit * weight);
 }
 
-/** Re-distribute an available main budget by weight, never below content size. */
+/**
+ * Distribute the available main space by weight. Content only constrains the
+ * *measure* pass; here the weights decide, so a block whose weight was dragged
+ * below one share can become smaller than its content (the trade stays honest).
+ */
 function allocateMain(block: BlockNode, intrinsic: number[], budget: number): number[] {
   const weights = mainWeights(block);
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-  return weights.map((w, i) => Math.max(intrinsic[i], (budget * w) / totalWeight));
+  if (totalWeight <= 0) return intrinsic.slice();
+  return weights.map((weight) => (budget * weight) / totalWeight);
 }
 
 const linear: LayoutDef = {
@@ -165,7 +182,7 @@ function gridInfo(block: BlockNode, children: Size[]): GridInfo {
   children.forEach((child, i) => {
     const rawSpan = Math.round(block.children[i]?.layout.span ?? 1);
     const span = Math.max(1, Math.min(columns, rawSpan));
-    const weight = Math.max(1, weightOf(block.children[i]));
+    const weight = Math.max(MIN_WEIGHT, weightOf(block.children[i]) || 1);
     if (col + span > columns) {
       col = 0;
       row += 1;
@@ -206,23 +223,20 @@ function gridInfo(block: BlockNode, children: Size[]): GridInfo {
   };
 }
 
-/** Size tracks strictly by weight, with the largest content/weight ratio as unit. */
+/** Size tracks strictly by weight, with the largest content as one share. */
 function weightedTracks(sizes: number[], weights: number[]): number[] {
-  let unit = 0;
-  weights.forEach((weight, i) => {
-    if (weight > 0) unit = Math.max(unit, (sizes[i] ?? 0) / weight);
-  });
-  return weights.map((weight, i) =>
-    weight > 0 ? unit * weight : sizes[i] ?? 0,
-  );
+  const unit = weightUnit(sizes);
+  return weights.map((weight, i) => (weight > 0 ? unit * weight : sizes[i] ?? 0));
 }
 
-/** Grow tracks into the available box, split by weight (never below content). */
+/** Distribute the available box by weight; content minimums come from the measure pass. */
 function growTracks(sizes: number[], weights: number[], gap: number, available: number): number[] {
   const budget = Math.max(0, available - gap * Math.max(0, sizes.length - 1));
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
   if (totalWeight <= 0) return sizes.slice();
-  return sizes.map((size, i) => Math.max(size, (budget * weights[i]) / totalWeight));
+  return weights.map((weight, i) =>
+    weight > 0 ? (budget * weight) / totalWeight : sizes[i] ?? 0,
+  );
 }
 
 const grid: LayoutDef = {

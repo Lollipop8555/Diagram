@@ -75,6 +75,7 @@ export function toPop(doc: DiagramDoc): string {
     `@direction ${doc.meta.direction}`,
     `@created ${doc.meta.createdAt.slice(0, 10)}`,
   ];
+  if (doc.size) lines.push(`@size ${Math.round(doc.size.w)} ${Math.round(doc.size.h)}`);
   if (doc.meta.description) lines.push(`@desc ${quote(doc.meta.description)}`);
   lines.push('');
   walk(doc.root, 0, lines);

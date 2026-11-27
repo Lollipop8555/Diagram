@@ -126,6 +126,16 @@ export function LinksPanel({ editor }: { editor: Editor }) {
                 </span>
                 <button
                   type="button"
+                  className="link-btn is-neutral link-style"
+                  aria-pressed={Boolean(relation.dashed)}
+                  aria-label={t('lineStyleHint')}
+                  title={t('lineStyleHint')}
+                  onClick={() => editor.patchRelation(relation.id, { dashed: !relation.dashed })}
+                >
+                  {relation.dashed ? t('lineDashed') : t('lineSolid')}
+                </button>
+                <button
+                  type="button"
                   className="link-btn"
                   aria-label={t('remove')}
                   title={t('remove')}

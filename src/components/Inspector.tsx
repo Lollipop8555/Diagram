@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import type { Editor } from '../model/store';
 import type { Align, Justify, LayoutKind, SkinKind } from '../model/types';
 import { SKIN_KINDS, TONES } from '../model/types';
 import { findBlock, findParent } from '../model/tree';
 import { getTemplate, templateAllowsLayout } from '../model/templates';
+import { MIN_WEIGHT } from '../layout/registry';
 import { SKINS, toneColors } from '../skins/palette';
 import { LAYOUT_LABELS, SKIN_LABELS, TONE_LABELS } from '../i18n/labels';
 import { LinksPanel } from './LinksPanel';
@@ -130,15 +132,11 @@ export function Inspector({ editor }: { editor: Editor }) {
         {layout.kind === 'grid' && (
           <label className="field">
             <span>{t('columns')}</span>
-            <input
-              className="input"
-              type="number"
+            <NumberField
+              value={layout.columns ?? 3}
               min={1}
               max={6}
-              value={layout.columns ?? 3}
-              onChange={(event) =>
-                editor.patchLayout(block.id, { columns: Math.max(1, Number(event.target.value) || 1) })
-              }
+              onCommit={(next) => editor.patchLayout(block.id, { columns: next })}
             />
           </label>
         )}
@@ -147,24 +145,28 @@ export function Inspector({ editor }: { editor: Editor }) {
           <div className="field">
             <span>{t('columnWeights')}</span>
             <div className="col-weights" role="group" aria-label={t('columnWeights')}>
-              {Array.from({ length: layout.columns ?? 3 }, (_, i) => (
-                <input
-                  key={i}
-                  className="input col-weight"
-                  type="number"
-                  min={1}
-                  max={9}
-                  value={layout.columnWeights?.[i] ?? 1}
-                  title={t('columnWeightsHint')}
-                  aria-label={`${t('columnWeights')} ${i + 1}`}
-                  onChange={(event) => {
-                    const count = layout.columns ?? 3;
-                    const next = Array.from({ length: count }, (_, k) => layout.columnWeights?.[k] ?? 1);
-                    next[i] = Math.max(1, Math.round(Number(event.target.value) || 1));
-                    editor.patchLayout(block.id, { columnWeights: next });
-                  }}
-                />
-              ))}
+              {Array.from({ length: layout.columns ?? 3 }, (_, i) => {
+                const count = layout.columns ?? 3;
+                const weights = Array.from(
+                  { length: count },
+                  (_, k) => layout.columnWeights?.[k] ?? 1,
+                );
+                return (
+                  <NumberField
+                    key={`${block.id}-col-${i}-${count}`}
+                    className="input col-weight"
+                    value={weights[i]}
+                    min={1}
+                    hint={t('columnWeightsHint')}
+                    ariaLabel={`${t('columnWeights')} ${i + 1}`}
+                    onCommit={(next) => {
+                      const updated = [...weights];
+                      updated[i] = next;
+                      editor.patchLayout(block.id, { columnWeights: updated });
+                    }}
+                  />
+                );
+              })}
             </div>
           </div>
         )}
@@ -172,15 +174,11 @@ export function Inspector({ editor }: { editor: Editor }) {
         {(layout.kind === 'linear' || layout.kind === 'grid' || layout.kind === 'flow' || layout.kind === 'stack') && (
           <label className="field">
             <span>{t('gap')}</span>
-            <input
-              className="input"
-              type="number"
+            <NumberField
+              value={layout.gap ?? 10}
               min={0}
               max={64}
-              value={layout.gap ?? 10}
-              onChange={(event) =>
-                editor.patchLayout(block.id, { gap: Math.max(0, Number(event.target.value) || 0) })
-              }
+              onCommit={(next) => editor.patchLayout(block.id, { gap: next })}
             />
           </label>
         )}
@@ -216,33 +214,32 @@ export function Inspector({ editor }: { editor: Editor }) {
         {(layout.kind === 'leaf' || layout.kind === 'flow') && (
           <label className="field">
             <span>{t('maxWidth')}</span>
-            <input
-              className="input"
-              type="number"
+            <NumberField
+              value={layout.maxWidth ?? 190}
               min={80}
               max={480}
-              value={layout.maxWidth ?? 190}
-              onChange={(event) =>
-                editor.patchLayout(block.id, { maxWidth: Math.max(80, Number(event.target.value) || 190) })
-              }
+              onCommit={(next) => editor.patchLayout(block.id, { maxWidth: next })}
             />
           </label>
         )}
 
-        {!isRoot && (
-          <label className="field">
-            <span>{t('weight')}</span>
-            <input
-              className="input"
-              type="number"
-              min={1}
-              max={8}
-              value={layout.weight ?? 1}
-              onChange={(event) =>
-                editor.patchLayout(block.id, { weight: Math.max(1, Number(event.target.value) || 1) })
-              }
-            />
-          </label>
+        {parent && (parent.layout.kind === 'linear' || parent.layout.kind === 'grid') && (
+          <>
+            <label className="field">
+              <span>{t('weight')}</span>
+              <NumberField
+                key={block.id}
+                value={layout.weight ?? 1}
+                min={MIN_WEIGHT}
+                step={0.1}
+                hint={t(parent.layout.kind === 'grid' ? 'weightHintGrid' : 'weightHint')}
+                onCommit={(next) => editor.patchLayout(block.id, { weight: next })}
+              />
+            </label>
+            <p className="field-note">
+              {t(parent.layout.kind === 'grid' ? 'weightHintGrid' : 'weightHint')}
+            </p>
+          </>
         )}
 
       </section>
@@ -357,5 +354,67 @@ export function Inspector({ editor }: { editor: Editor }) {
 
       <LinksPanel editor={editor} />
     </aside>
+  );
+}
+
+/**
+ * Numeric fields stage their value locally and commit on blur / Enter. Typing
+ * intermediate values (e.g. "12" on the way to "2") must not resize anything,
+ * and an emptied field falls back to the current value instead of the minimum.
+ */
+function NumberField({
+  value,
+  min,
+  max,
+  step = 1,
+  hint,
+  ariaLabel,
+  className = 'input',
+  onCommit,
+}: {
+  value: number;
+  min: number;
+  max?: number;
+  step?: number;
+  hint?: string;
+  ariaLabel?: string;
+  className?: string;
+  onCommit: (next: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? String(value);
+
+  const commit = () => {
+    if (draft === null) return;
+    const parsed = Number(draft);
+    let next = Number.isFinite(parsed) ? parsed : value;
+    next = Math.max(min, next);
+    if (max !== undefined) next = Math.min(max, next);
+    next = Math.round(next / step) * step;
+    next = Math.round(next * 1000) / 1000;
+    setDraft(null);
+    if (next !== value) onCommit(next);
+  };
+
+  return (
+    <input
+      className={className}
+      type="text"
+      inputMode={step < 1 ? 'decimal' : 'numeric'}
+      value={shown}
+      title={hint}
+      aria-label={ariaLabel}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          event.currentTarget.blur();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          setDraft(null);
+        }
+      }}
+    />
   );
 }

@@ -21,7 +21,10 @@ const SHORTCUTS: { keys: string; label: DictKey }[] = [
   { keys: `${MOD} + / −`, label: 'scZoom' },
   { keys: `${MOD} 0`, label: 'scFit' },
   { keys: `${MOD} 1`, label: 'scActualSize' },
+  { keys: 'Wheel', label: 'scWheel' },
   { keys: `${MOD} E`, label: 'scViewToggle' },
+  { keys: `${MOD} Enter`, label: 'scApplyEdit' },
+  { keys: 'Right-click', label: 'scContextMenu' },
   { keys: 'Esc', label: 'scEscape' },
   { keys: 'Shift ?', label: 'scHelp' },
 ];

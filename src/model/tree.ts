@@ -1,5 +1,5 @@
 import type { BlockNode, DiagramDoc, ID, LayoutKind, TemplateId } from './types';
-import { MAX_CHILDREN, MAX_DEPTH, acceptsChild } from '../layout/registry';
+import { MAX_CHILDREN, MIN_WEIGHT, acceptsChild } from '../layout/registry';
 import { getTemplate } from './templates';
 
 export type ReasonCode =
@@ -166,9 +166,6 @@ export function checkMove(
     if (adjusted === oldIndex) return 'NO_CHANGE';
   }
 
-  const parentDepth = depthOf(doc.root, parent.id);
-  const newDepth = parentDepth + subtreeHeight(drag);
-  if (newDepth > Math.min(MAX_DEPTH, template.maxDepth)) return 'DEPTH_LIMIT';
   if (parent.children.length >= MAX_CHILDREN) return 'CHILD_LIMIT';
   return null;
 }
@@ -302,23 +299,60 @@ export function demoteBlock(doc: DiagramDoc, id: ID): DiagramDoc {
   };
 }
 
-const blockWeight = (block: BlockNode) => Math.max(1, Math.round(block.layout.weight ?? 1));
+const blockWeight = (block: BlockNode) => Math.max(MIN_WEIGHT, block.layout.weight || 1);
+const roundWeight = (value: number) => Math.round(value * 10) / 10;
 
 /**
- * Trade weight between two adjacent siblings, keeping their sum and both values
- * at 1 or above. Used by the canvas splitter drag.
+ * Trade size between two adjacent siblings. The pair keeps its total while both
+ * sides stay at or above `MIN_WEIGHT`, so the dragged boundary follows the
+ * pointer one-to-one. Past the floor the other side keeps the movement and the
+ * frame grows instead (the caller enlarges the root by the same amount).
  */
-export function pairWeights(doc: DiagramDoc, aId: ID, bId: ID, aWeight: number): DiagramDoc {
+export function tradeWeights(
+  aWeight: number,
+  bWeight: number,
+  delta: number,
+): { a: number; b: number } {
+  const a = Math.max(MIN_WEIGHT, aWeight);
+  const b = Math.max(MIN_WEIGHT, bWeight);
+  if (delta > 0) {
+    const taken = Math.min(delta, b - MIN_WEIGHT);
+    return { a: roundWeight(a + delta), b: roundWeight(b - taken) };
+  }
+  const taken = Math.min(-delta, a - MIN_WEIGHT);
+  return { a: roundWeight(a - taken), b: roundWeight(b - delta) };
+}
+
+/**
+ * Set the weights of two adjacent siblings. With only `aWeight` the pair keeps
+ * its current sum (a plain trade); passing both lets one side move freely, which
+ * is what a splitter drag does.
+ */
+export function pairWeights(
+  doc: DiagramDoc,
+  aId: ID,
+  bId: ID,
+  aWeight: number,
+  bWeight?: number,
+): DiagramDoc {
   const parent = findParent(doc.root, aId);
   if (!parent) return doc;
   const a = parent.children.find((child) => child.id === aId);
   const b = parent.children.find((child) => child.id === bId);
   if (!a || !b) return doc;
 
-  const total = blockWeight(a) + blockWeight(b);
-  const nextA = Math.min(total - 1, Math.max(1, Math.round(aWeight)));
-  const nextB = total - nextA;
-  if (nextA === blockWeight(a) && nextB === blockWeight(b)) return doc;
+  const currentA = blockWeight(a);
+  const currentB = blockWeight(b);
+  let nextA = Math.max(MIN_WEIGHT, roundWeight(aWeight));
+  let nextB: number;
+  if (bWeight === undefined) {
+    const total = currentA + currentB;
+    nextA = Math.min(total - 1, Math.max(1, nextA));
+    nextB = total - nextA;
+  } else {
+    nextB = Math.max(MIN_WEIGHT, roundWeight(bWeight));
+  }
+  if (nextA === currentA && nextB === currentB) return doc;
 
   return {
     ...doc,

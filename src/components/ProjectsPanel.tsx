@@ -1,13 +1,14 @@
 import { useCallback, useRef, useState } from 'react';
-import { Download, FolderOpen, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { Copy, Download, FolderOpen, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import type { Editor } from '../model/store';
+import type { Project } from '../model/projects';
 import { countBlocks } from '../model/tree';
 import { getTemplate } from '../model/templates';
 import { toJson } from '../interchange/json';
 import { downloadText, readTextFile, slugify } from '../interchange/download';
 import { TEMPLATE_LIST } from './templateList';
 import { Modal } from './Modal';
-import { ContextMenu, useContextMenu } from './ContextMenu';
+import { ContextMenu, useContextMenu, type ContextMenuItem } from './ContextMenu';
 
 /** Inline project manager: the sidebar's local "file list". */
 export function ProjectsPanel({ editor }: { editor: Editor }) {
@@ -41,6 +42,48 @@ export function ProjectsPanel({ editor }: { editor: Editor }) {
   const exportJson = (name: string, doc: Parameters<typeof toJson>[0]) =>
     downloadText(toJson(doc), `${slugify(name, 'diagram')}.json`, 'application/json;charset=utf-8');
 
+  /** One menu definition shared by right-click and the three-dot button. */
+  const menuItems = (project: Project): ContextMenuItem[] => [
+    {
+      id: 'open',
+      label: t('projectOpen'),
+      icon: FolderOpen,
+      onSelect: () => editor.openProject(project.id),
+    },
+    {
+      id: 'rename',
+      label: t('projectRename'),
+      icon: Pencil,
+      onSelect: () => {
+        setEditingId(project.id);
+        setDraft(project.name);
+      },
+    },
+    {
+      id: 'duplicate',
+      label: t('projectDuplicate'),
+      icon: Copy,
+      onSelect: () => editor.duplicateProject(project.id),
+    },
+    {
+      id: 'export',
+      label: t('projectExport'),
+      icon: Download,
+      onSelect: () => exportJson(project.name, project.doc),
+    },
+    {
+      id: 'delete',
+      label: t('projectTrash'),
+      icon: Trash2,
+      danger: true,
+      onSelect: async () => {
+        if (await editor.askConfirm(t('projectDeleteConfirm'), t('projectTrash'), true)) {
+          editor.deleteProject(project.id);
+        }
+      },
+    },
+  ];
+
   return (
     <>
       <section className="panel projects-panel">
@@ -72,48 +115,7 @@ export function ProjectsPanel({ editor }: { editor: Editor }) {
               <li
                 key={project.id}
                 className={`project-row${active ? ' is-active' : ''}`}
-                onContextMenu={(event) =>
-                  ctx.open(event, [
-                    {
-                      id: 'open',
-                      label: t('projectOpen'),
-                      icon: FolderOpen,
-                      onSelect: () => editor.openProject(project.id),
-                    },
-                    {
-                      id: 'rename',
-                      label: t('projectRename'),
-                      icon: Pencil,
-                      onSelect: () => {
-                        setEditingId(project.id);
-                        setDraft(project.name);
-                      },
-                    },
-                    {
-                      id: 'export',
-                      label: t('projectExport'),
-                      icon: Download,
-                      onSelect: () => exportJson(project.name, project.doc),
-                    },
-                    {
-                      id: 'delete',
-                      label: t('projectTrash'),
-                      icon: Trash2,
-                      danger: true,
-                      onSelect: async () => {
-                        if (
-                          await editor.askConfirm(
-                            t('projectDeleteConfirm'),
-                            t('projectTrash'),
-                            true,
-                          )
-                        ) {
-                          editor.deleteProject(project.id);
-                        }
-                      },
-                    },
-                  ])
-                }
+                onContextMenu={(event) => ctx.open(event, menuItems(project))}
               >
                 {editingId === project.id ? (
                   <input
@@ -139,6 +141,11 @@ export function ProjectsPanel({ editor }: { editor: Editor }) {
                     type="button"
                     className="project-open"
                     onClick={() => editor.openProject(project.id)}
+                    onDoubleClick={(event) => {
+                      event.preventDefault();
+                      setEditingId(project.id);
+                      setDraft(project.name);
+                    }}
                     title={t('projectOpen')}
                   >
                     <span className="project-name">{project.name}</span>
@@ -146,6 +153,22 @@ export function ProjectsPanel({ editor }: { editor: Editor }) {
                       {getTemplate(project.doc.meta.template).name[locale]} ·{' '}
                       {t('projectBlocks', { n: countBlocks(project.doc.root) })} · {time(project.updatedAt)}
                     </span>
+                  </button>
+                )}
+
+                {editingId === project.id ? null : (
+                  <button
+                    type="button"
+                    className="project-menu-btn"
+                    title={t('projectMenu')}
+                    aria-label={t('projectMenu')}
+                    aria-haspopup="menu"
+                    onClick={(event) => {
+                      const box = event.currentTarget.getBoundingClientRect();
+                      ctx.openAt(box.right - 6, box.bottom + 4, menuItems(project));
+                    }}
+                  >
+                    <MoreHorizontal size={15} strokeWidth={2} />
                   </button>
                 )}
               </li>
