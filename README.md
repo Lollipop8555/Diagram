@@ -1,5 +1,7 @@
 # Diagram
 
+![License: MIT](https://img.shields.io/badge/License-MIT-6d7cb8.svg)
+
 简单的架构图工具。用「块」来搭架构：块可以嵌套，线性容器按权重瓜分主轴，网格容器的列权重在容器上设置。数据全部保存在本机浏览器里，可导出成 `pop_diagram` 文本、JSON、SVG 或 PNG。
 
 ## 特性
@@ -73,3 +75,7 @@ b1 "支付系统" linear(y) plain {
 - 当前文档：`localStorage` 的 `macaron.diagram.v3`
 - 项目列表：`macaron.projects.v1`（当前项目 id：`macaron.activeProject.v1`）
 - 界面语言：`macaron.locale`
+
+## 许可证
+
+[MIT](LICENSE) © 2026 lollipop

@@ -2,6 +2,9 @@
   "name": "macaron-diagram",
   "private": true,
   "version": "0.1.0",
+  "description": "简单的架构图工具：嵌套块、比例布局、文本协议、导出 SVG / PNG",
+  "license": "MIT",
+  "author": "lollipop",
   "type": "module",
   "scripts": {
     "dev": "vite",
