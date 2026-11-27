@@ -6,6 +6,7 @@ import { toPop } from '../interchange/toPop';
 import { toJson } from '../interchange/json';
 import { docToSvg, svgToPngBlob } from '../export/toSvg';
 import { buildEdges } from '../layout/edges';
+import { InstallButton } from './InstallButton';
 import { layoutDoc } from '../layout/dispatch';
 
 export function TopBar({
@@ -165,6 +166,8 @@ export function TopBar({
             </div>
           ) : null}
         </details>
+
+        <InstallButton label={t('install')} />
 
         <button
           type="button"

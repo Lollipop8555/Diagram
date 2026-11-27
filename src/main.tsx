@@ -11,3 +11,16 @@ createRoot(container).render(
     <App />
   </StrictMode>,
 );
+
+/**
+ * Progressive enhancement: register the offline shell in production only.
+ * The app still works without it (it is a plain SPA), the worker just adds
+ * offline launch + installability.
+ */
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
+      /* offline support is optional — ignore registration failures */
+    });
+  });
+}

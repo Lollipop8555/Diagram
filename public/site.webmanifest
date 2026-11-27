@@ -1,18 +1,30 @@
 {
-  "name": "Diagram",
+  "name": "Diagram — 简单的架构图工具",
   "short_name": "Diagram",
-  "description": "简单的架构图工具",
+  "description": "简单的架构图工具：嵌套块、比例布局、文本协议、导出 SVG / PNG。",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "orientation": "any",
   "background_color": "#f6f1e8",
-  "theme_color": "#6d7cb8",
+  "theme_color": "#f6f1e8",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "categories": ["productivity", "developer", "design"],
   "icons": [
     {
       "src": "./favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ]
 }

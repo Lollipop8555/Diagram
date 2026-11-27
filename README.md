@@ -21,10 +21,18 @@
 npm install
 npm run dev        # 开发服务器
 npm run build      # 类型检查 + 生产构建到 dist/
-npm run preview    # 预览构建产物
+npm run preview    # 预览构建产物（离线能力需在 preview / 线上验证）
 npm run typecheck  # 仅类型检查
 npm test           # 单元测试（Vitest）
 ```
+
+## PWA（渐进式增强）
+
+- `public/sw.js` 注册为 Service Worker：**导航请求网络优先、失败回落到缓存的壳**；同源静态资源 **stale-while-revalidate**（先给缓存、后台更新）。首次访问后即可**离线打开**。
+- 数据本身存在 `localStorage`，所以离线启动仍能恢复上次的项目。
+- `public/site.webmanifest` 提供安装信息（standalone、maskable 图标、主题色），浏览器给出「安装到桌面」提示时，顶栏会出现安装按钮（`InstallButton`，仅在支持 `beforeinstallprompt` 的浏览器出现，属于渐进增强，不支持就完全不显示）。
+- Service Worker **只在生产构建注册**（`import.meta.env.PROD`），开发时不会缓存干扰调试。
+- 注意：Service Worker 需要安全上下文（`https` 或 `localhost`）。
 
 ## 发布到 GitHub Pages
 
