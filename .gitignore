@@ -1,0 +1,28 @@
+# 依赖与构建产出
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+
+# 本地环境与日志
+*.local
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# 站点生成缓存
+.vite/
+.cache/
+
+# 交接与验证文档（沿用原设定；如需纳入版本库请整行删除）
+/plans
